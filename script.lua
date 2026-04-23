@@ -17,7 +17,7 @@ MainButton.Font = Enum.Font.GothamBold
 MainButton.Text = "💀"
 MainButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 MainButton.TextSize = 30
-MainButton.Draggable = true -- Можно двигать
+MainButton.Draggable = true
 
 UICorner.CornerRadius = UDim.new(0, 12)
 UICorner.Parent = MainButton
@@ -25,8 +25,7 @@ UICorner.Parent = MainButton
 -- Переменные
 local RagdollEnabled = false
 local Player = game.Players.LocalPlayer
-local Character = Player.Character or Player.CharacterAdded:Wait()
-local Humanoid = Character:WaitForChild("Humanoid")
+local SavedMotors = {}
 
 -- Функция уведомлений
 local function SendNotification(text)
@@ -43,31 +42,57 @@ local function EnableRagdoll()
     if not Character then return end
     
     local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+    
     if Humanoid then
-        -- Устанавливаем состояние Ragdoll
-        Humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+        -- Отключаем управление
+        Humanoid.PlatformStand = true
+        Humanoid.AutoRotate = false
         
-        -- Отключаем все моторы для эффекта тряпичной куклы
+        -- Останавливаем анимации
+        for _, track in pairs(Humanoid:GetPlayingAnimationTracks()) do
+            track:Stop()
+        end
+        
+        -- Сохраняем и заменяем моторы на шарниры
+        SavedMotors = {}
         for _, v in pairs(Character:GetDescendants()) do
             if v:IsA("Motor6D") then
-                local socket = Instance.new("BallSocketConstraint")
+                local info = {
+                    Motor = v,
+                    Part0 = v.Part0,
+                    Part1 = v.Part1,
+                    C0 = v.C0,
+                    C1 = v.C1,
+                    Parent = v.Parent
+                }
+                table.insert(SavedMotors, info)
+                
+                local a0 = Instance.new("Attachment")
                 local a1 = Instance.new("Attachment")
-                local a2 = Instance.new("Attachment")
                 
-                a1.Parent = v.Part0
-                a2.Parent = v.Part1
+                a0.Parent = v.Part0
+                a1.Parent = v.Part1
+                a0.CFrame = v.C0
+                a1.CFrame = v.C1
+                a0.Name = "RagdollAttachment0"
+                a1.Name = "RagdollAttachment1"
                 
-                socket.Parent = v.Parent
-                socket.Attachment0 = a1
-                socket.Attachment1 = a2
-                
-                a1.CFrame = v.C0
-                a2.CFrame = v.C1
-                
-                socket.LimitsEnabled = true
-                socket.TwistLimitsEnabled = true
+                local ball = Instance.new("BallSocketConstraint")
+                ball.Parent = v.Parent
+                ball.Attachment0 = a0
+                ball.Attachment1 = a1
+                ball.LimitsEnabled = true
+                ball.UpperAngle = 45
+                ball.Name = "RagdollConstraint"
                 
                 v.Enabled = false
+            end
+        end
+        
+        -- Включаем коллизию
+        for _, part in pairs(Character:GetDescendants()) do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                part.CanCollide = true
             end
         end
     end
@@ -79,19 +104,31 @@ local function DisableRagdoll()
     if not Character then return end
     
     local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+    
     if Humanoid then
-        -- Восстанавливаем нормальное состояние
-        Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-        
-        -- Включаем обратно все моторы
+        -- Удаляем все рагдолл объекты
         for _, v in pairs(Character:GetDescendants()) do
-            if v:IsA("Motor6D") then
-                v.Enabled = true
-            end
-            if v:IsA("BallSocketConstraint") then
+            if v.Name == "RagdollConstraint" or v.Name == "RagdollAttachment0" or v.Name == "RagdollAttachment1" then
                 v:Destroy()
             end
         end
+        
+        -- Восстанавливаем моторы
+        for _, info in pairs(SavedMotors) do
+            if info.Motor and info.Part0 and info.Part1 then
+                info.Motor.Enabled = true
+            end
+        end
+        
+        -- Включаем управление обратно
+        Humanoid.PlatformStand = false
+        Humanoid.AutoRotate = true
+        
+        -- Ставим персонажа на ноги
+        wait(0.1)
+        Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+        
+        SavedMotors = {}
     end
 end
 
@@ -115,13 +152,10 @@ end)
 -- Обновление при респавне
 Player.CharacterAdded:Connect(function(char)
     Character = char
-    Humanoid = char:WaitForChild("Humanoid")
-    
-    -- Если ragdoll был включен, применяем снова
-    if RagdollEnabled then
-        wait(0.5)
-        EnableRagdoll()
-    end
+    RagdollEnabled = false
+    SavedMotors = {}
+    MainButton.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    MainButton.Text = "💀"
 end)
 
 -- Первое уведомление

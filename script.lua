@@ -1,4 +1,4 @@
---// MM2 Real Death Ragdoll (Stable)
+--// MM2 Stable Realistic Ragdoll V2
 
 local player = game.Players.LocalPlayer
 
@@ -12,9 +12,9 @@ local gui = Instance.new("ScreenGui", game.CoreGui)
 gui.Name = "MM2_Ragdoll"
 
 local button = Instance.new("TextButton", gui)
-button.Size = UDim2.new(0, 65, 0, 65)
-button.Position = UDim2.new(0.5, -32, 0.75, 0)
-button.BackgroundColor3 = Color3.fromRGB(20,20,20)
+button.Size = UDim2.new(0, 60, 0, 60)
+button.Position = UDim2.new(0.5, -30, 0.75, 0)
+button.BackgroundColor3 = Color3.fromRGB(25,25,25)
 button.Text = "R"
 button.TextScaled = true
 button.TextColor3 = Color3.new(1,1,1)
@@ -22,16 +22,6 @@ button.Active = true
 button.Draggable = true
 button.BorderSizePixel = 0
 Instance.new("UICorner", button).CornerRadius = UDim.new(1,0)
-
-local function notify(text)
-	pcall(function()
-		game.StarterGui:SetCore("SendNotification", {
-			Title = "MM2 Death",
-			Text = text,
-			Duration = 2
-		})
-	end)
-end
 
 local enabled = false
 local stored = {}
@@ -54,8 +44,8 @@ local function restoreHair(char)
 	removedAccessories = {}
 end
 
--- Создание сустава с лимитами
-local function createJoint(motor)
+-- Создание ограниченного сустава
+local function createLimitedJoint(motor, angle, twist)
 	local p0 = motor.Part0
 	local p1 = motor.Part1
 	if not p0 or not p1 then return end
@@ -70,21 +60,33 @@ local function createJoint(motor)
 	ball.Attachment1 = a1
 	ball.LimitsEnabled = true
 	ball.TwistLimitsEnabled = true
-	ball.UpperAngle = 35
-	ball.TwistLowerAngle = -25
-	ball.TwistUpperAngle = 25
+	ball.UpperAngle = angle
+	ball.TwistLowerAngle = -twist
+	ball.TwistUpperAngle = twist
 	ball.Restitution = 0
 	ball.Parent = p0
 
 	motor.Enabled = false
 
-	stored[motor] = {a0, a1, ball}
+	stored[motor] = {a0,a1,ball}
 end
 
 local function enableRagdoll(char)
 	for _, m in pairs(char:GetDescendants()) do
 		if m:IsA("Motor6D") then
-			createJoint(m)
+
+			-- Оставляем позвоночник жёстким
+			if m.Name == "RootJoint" or m.Name == "Waist" then
+				continue
+			end
+
+			-- Шея (ограниченная)
+			if m.Name == "Neck" then
+				createLimitedJoint(m, 25, 20)
+			else
+				-- Руки и ноги
+				createLimitedJoint(m, 45, 25)
+			end
 		end
 	end
 end
@@ -114,27 +116,22 @@ local function toggle()
 	if enabled then
 		makeBald(char)
 
-		-- Убираем контроль
 		hum.AutoRotate = false
 		hum:ChangeState(Enum.HumanoidStateType.Physics)
 
-		-- Останавливаем вращение
-		root.AssemblyAngularVelocity = Vector3.new(0,0,0)
+		-- Убираем вращение
+		root.AssemblyAngularVelocity = Vector3.zero
 
-		-- Немного толкаем вниз чтобы реально упал
-		root.AssemblyLinearVelocity = Vector3.new(0,-25,0)
+		-- Падаем вниз
+		root.AssemblyLinearVelocity = Vector3.new(0,-30,0)
 
 		enableRagdoll(char)
-
-		notify("💀 Вы убиты")
 	else
 		disableRagdoll()
 		restoreHair(char)
 
 		hum:ChangeState(Enum.HumanoidStateType.GettingUp)
 		hum.AutoRotate = true
-
-		notify("✅ Вы встали")
 	end
 end
 

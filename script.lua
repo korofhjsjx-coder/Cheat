@@ -1,29 +1,40 @@
---// MM2 Ragdoll + Bald (Delta)
+--// MM2 Ragdoll + Bald (Improved)
 
-local player = game.Players.LocalPlayer
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
 
+-- Удаляем старый GUI
 pcall(function()
     if game.CoreGui:FindFirstChild("MM2_Ragdoll") then
         game.CoreGui.MM2_Ragdoll:Destroy()
     end
 end)
 
-local gui = Instance.new("ScreenGui", game.CoreGui)
+-- GUI
+local gui = Instance.new("ScreenGui")
 gui.Name = "MM2_Ragdoll"
+gui.Parent = game.CoreGui
 
-local button = Instance.new("TextButton", gui)
-button.Size = UDim2.new(0, 65, 0, 65)
-button.Position = UDim2.new(0.5, -32, 0.75, 0)
+local button = Instance.new("TextButton")
+button.Parent = gui
+button.Size = UDim2.new(0,65,0,65)
+button.Position = UDim2.new(0.5,-32,0.75,0)
 button.BackgroundColor3 = Color3.fromRGB(20,20,20)
 button.Text = "R"
 button.TextScaled = true
 button.TextColor3 = Color3.new(1,1,1)
+button.BorderSizePixel = 0
 button.Active = true
 button.Draggable = true
-button.BorderSizePixel = 0
 
 Instance.new("UICorner", button).CornerRadius = UDim.new(1,0)
 
+-- Переменные
+local enabled = false
+local storedMotors = {}
+local removedHair = {}
+
+-- Уведомление
 local function notify(text)
     pcall(function()
         game.StarterGui:SetCore("SendNotification", {
@@ -34,75 +45,80 @@ local function notify(text)
     end)
 end
 
-local enabled = false
-local storedMotors = {}
-local removedAccessories = {}
+-- Проверка: волосы ли это
+local function isHair(accessory)
+    return accessory:IsA("Accessory") 
+        and accessory.AccessoryType == Enum.AccessoryType.Hair
+end
 
--- Удаляем волосы
+-- Сделать лысым
 local function makeBald(character)
-    for _, acc in pairs(character:GetChildren()) do
-        if acc:IsA("Accessory") then
-            if acc:FindFirstChild("Handle") then
-                table.insert(removedAccessories, acc)
-                acc.Parent = nil
-            end
+    removedHair = {}
+    for _, acc in ipairs(character:GetChildren()) do
+        if isHair(acc) then
+            table.insert(removedHair, acc)
+            acc.Parent = nil
         end
     end
 end
 
--- Возвращаем волосы
+-- Вернуть волосы
 local function restoreHair(character)
-    for _, acc in pairs(removedAccessories) do
-        acc.Parent = character
+    for _, acc in ipairs(removedHair) do
+        if acc then
+            acc.Parent = character
+        end
     end
-    removedAccessories = {}
+    removedHair = {}
 end
 
--- Создание ragdoll
+-- Создать ragdoll
 local function createRagdoll(character)
-    for _, motor in pairs(character:GetDescendants()) do
-        if motor:IsA("Motor6D") then
-            local part0 = motor.Part0
-            local part1 = motor.Part1
+    storedMotors = {}
 
-            if part0 and part1 then
-                local att0 = Instance.new("Attachment", part0)
-                local att1 = Instance.new("Attachment", part1)
+    for _, motor in ipairs(character:GetDescendants()) do
+        if motor:IsA("Motor6D") and motor.Part0 and motor.Part1 then
 
-                att0.CFrame = motor.C0
-                att1.CFrame = motor.C1
+            local att0 = Instance.new("Attachment")
+            local att1 = Instance.new("Attachment")
 
-                local ball = Instance.new("BallSocketConstraint")
-                ball.Attachment0 = att0
-                ball.Attachment1 = att1
-                ball.Parent = part0
+            att0.CFrame = motor.C0
+            att1.CFrame = motor.C1
 
-                storedMotors[motor] = {
-                    Motor = motor,
-                    Attachment0 = att0,
-                    Attachment1 = att1,
-                    Constraint = ball
-                }
+            att0.Parent = motor.Part0
+            att1.Parent = motor.Part1
 
-                motor.Enabled = false
-            end
+            local ball = Instance.new("BallSocketConstraint")
+            ball.Attachment0 = att0
+            ball.Attachment1 = att1
+            ball.Parent = motor.Part0
+
+            storedMotors[motor] = {
+                Motor = motor,
+                A0 = att0,
+                A1 = att1,
+                Constraint = ball
+            }
+
+            motor.Enabled = false
         end
     end
 end
 
--- Удаление ragdoll
+-- Удалить ragdoll
 local function removeRagdoll()
     for motor, data in pairs(storedMotors) do
         if motor and motor.Parent then
             motor.Enabled = true
         end
-        if data.Attachment0 then data.Attachment0:Destroy() end
-        if data.Attachment1 then data.Attachment1:Destroy() end
+        if data.A0 then data.A0:Destroy() end
+        if data.A1 then data.A1:Destroy() end
         if data.Constraint then data.Constraint:Destroy() end
     end
     storedMotors = {}
 end
 
+-- Переключение
 local function toggle()
     local char = player.Character
     if not char then return end
@@ -117,14 +133,21 @@ local function toggle()
         hum:ChangeState(Enum.HumanoidStateType.Physics)
         hum.AutoRotate = false
         createRagdoll(char)
-        notify("💀 Лысый Ragdoll включён")
+        notify("💀 Ragdoll включён")
     else
         removeRagdoll()
         restoreHair(char)
         hum:ChangeState(Enum.HumanoidStateType.GettingUp)
         hum.AutoRotate = true
-        notify("✅ Волосы возвращены")
+        notify("✅ Ragdoll выключен")
     end
 end
+
+-- Фикс после смерти
+player.CharacterAdded:Connect(function()
+    enabled = false
+    storedMotors = {}
+    removedHair = {}
+end)
 
 button.MouseButton1Click:Connect(toggle)
